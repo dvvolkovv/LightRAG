@@ -1,0 +1,98 @@
+graph:
+  storage: "builtin"          # используем встроенный граф
+  schema:
+    entities:
+      - name: Person
+        id_field: id
+        fields:
+          - name: display_name
+            type: string
+          - name: phone
+            type: string
+            optional: true
+
+      - name: Value
+        id_field: key
+        fields:
+          - name: name
+            type: string
+
+      - name: Interest
+        id_field: name
+        fields:
+          - name: category
+            type: string
+            optional: true
+
+      - name: Skill
+        id_field: name
+        fields:
+          - name: level
+            type: string
+            optional: true
+
+      - name: Desire
+        id_field: name
+        fields:
+          - name: description
+            type: string
+            optional: true
+
+      - name: Intention
+        id_field: name
+        fields:
+          - name: horizon
+            type: string
+            optional: true
+
+      - name: Belief
+        id_field: name
+        fields:
+          - name: description
+            type: string
+            optional: true
+
+    relations:
+      - name: HAS_VALUE
+        from: Person
+        to: Value
+        properties:
+          - name: reason
+            type: text
+          - name: method
+            type: string
+          - name: confidence
+            type: float
+          - name: weight
+            type: int
+          - name: source_ids
+            type: list
+          - name: created_by
+            type: string
+          - name: created_at
+            type: datetime
+
+      - name: HAS_INTEREST
+        from: Person
+        to: Interest
+        properties: *id001  # можно ссылаться на шаблон
+
+      - name: HAS_SKILL
+        from: Person
+        to: Skill
+        properties: *id001
+
+      - name: HAS_DESIRE
+        from: Person
+        to: Desire
+        properties: *id001
+
+      - name: HAS_INTENTION
+        from: Person
+        to: Intention
+        properties: *id001
+
+      - name: HAS_BELIEF
+        from: Person
+        to: Belief
+        properties: *id001
