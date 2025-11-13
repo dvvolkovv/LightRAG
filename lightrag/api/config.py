@@ -370,6 +370,9 @@ def parse_args() -> argparse.Namespace:
         "ENABLE_LLM_CACHE_FOR_EXTRACT", True, bool
     )
     args.enable_llm_cache = get_env_value("ENABLE_LLM_CACHE", True, bool)
+    args.enable_graph_processing = get_env_value(
+        "ENABLE_GRAPH_PROCESSING", True, bool
+    )
 
     # Select Document loading tool (DOCLING, DEFAULT)
     args.document_loading_engine = get_env_value("DOCUMENT_LOADING_ENGINE", "DEFAULT")

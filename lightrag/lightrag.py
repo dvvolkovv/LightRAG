@@ -356,6 +356,11 @@ class LightRAG:
     enable_llm_cache_for_entity_extract: bool = field(default=True)
     """If True, enables caching for entity extraction steps to reduce LLM costs."""
 
+    enable_graph_processing: bool = field(
+        default=get_env_value("ENABLE_GRAPH_PROCESSING", True, bool)
+    )
+    """Controls whether the ingestion pipeline updates the knowledge graph."""
+
     # Extensions
     # ---
 
@@ -1197,10 +1202,13 @@ class LightRAG:
 
             tasks = [
                 self.chunks_vdb.upsert(inserting_chunks),
-                self._process_extract_entities(inserting_chunks),
                 self.full_docs.upsert(new_docs),
                 self.text_chunks.upsert(inserting_chunks),
             ]
+            if self.enable_graph_processing:
+                tasks.append(
+                    self._process_extract_entities(inserting_chunks)
+                )
             await asyncio.gather(*tasks)
 
         finally:
@@ -1825,17 +1833,24 @@ class LightRAG:
                                 text_chunks_task,
                             ]
                             entity_relation_task = None
+                            chunk_results = []
 
                             # Execute first stage tasks
                             await asyncio.gather(*first_stage_tasks)
 
                             # Stage 2: Process entity relation graph (after text_chunks are saved)
-                            entity_relation_task = asyncio.create_task(
-                                self._process_extract_entities(
-                                    chunks, pipeline_status, pipeline_status_lock
+                            if self.enable_graph_processing:
+                                entity_relation_task = asyncio.create_task(
+                                    self._process_extract_entities(
+                                        chunks, pipeline_status, pipeline_status_lock
+                                    )
                                 )
-                            )
-                            chunk_results = await entity_relation_task
+                                chunk_results = await entity_relation_task
+                            else:
+                                logger.info(
+                                    "Graph processing disabled; skipping entity extraction for %s",
+                                    file_path,
+                                )
                             file_extraction_stage_ok = True
 
                         except Exception as e:
@@ -1917,25 +1932,39 @@ class LightRAG:
                                             "User cancelled"
                                         )
 
-                                # Use chunk_results from entity_relation_task
-                                await merge_nodes_and_edges(
-                                    chunk_results=chunk_results,  # result collected from entity_relation_task
-                                    knowledge_graph_inst=self.chunk_entity_relation_graph,
-                                    entity_vdb=self.entities_vdb,
-                                    relationships_vdb=self.relationships_vdb,
-                                    global_config=asdict(self),
-                                    full_entities_storage=self.full_entities,
-                                    full_relations_storage=self.full_relations,
-                                    doc_id=doc_id,
-                                    pipeline_status=pipeline_status,
-                                    pipeline_status_lock=pipeline_status_lock,
-                                    llm_response_cache=self.llm_response_cache,
-                                    entity_chunks_storage=self.entity_chunks,
-                                    relation_chunks_storage=self.relation_chunks,
-                                    current_file_number=current_file_number,
-                                    total_files=total_files,
-                                    file_path=file_path,
-                                )
+                                if self.enable_graph_processing:
+                                    # Use chunk_results from entity_relation_task
+                                    await merge_nodes_and_edges(
+                                        chunk_results=chunk_results,  # result collected from entity_relation_task
+                                        knowledge_graph_inst=self.chunk_entity_relation_graph,
+                                        entity_vdb=self.entities_vdb,
+                                        relationships_vdb=self.relationships_vdb,
+                                        global_config=asdict(self),
+                                        full_entities_storage=self.full_entities,
+                                        full_relations_storage=self.full_relations,
+                                        doc_id=doc_id,
+                                        pipeline_status=pipeline_status,
+                                        pipeline_status_lock=pipeline_status_lock,
+                                        llm_response_cache=self.llm_response_cache,
+                                        entity_chunks_storage=self.entity_chunks,
+                                        relation_chunks_storage=self.relation_chunks,
+                                        current_file_number=current_file_number,
+                                        total_files=total_files,
+                                        file_path=file_path,
+                                    )
+                                else:
+                                    logger.info(
+                                        "Graph processing disabled; skipping knowledge graph merge for %s",
+                                        file_path,
+                                    )
+                                    async with pipeline_status_lock:
+                                        skip_message = (
+                                            f"Graph update skipped for file {current_file_number}/{total_files}: {file_path}"
+                                        )
+                                        pipeline_status["latest_message"] = skip_message
+                                        pipeline_status["history_messages"].append(
+                                            skip_message
+                                        )
 
                                 # Record processing end time
                                 processing_end_time = int(time.time())
